@@ -1,0 +1,45 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: "rabbitmq"
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  channel-database:
+    image: postgres:17-alpine
+    volumes:
+      - channel-database-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: channels
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d channels"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  channel-service:
+    build:
+      context: ../..
+      dockerfile: apps/channel-microservice/Dockerfile
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      channel-database:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    environment:
+      ChannelDatabase__Host: channel-database
+      RabbitMQ__Host: rabbitmq
+      ASPNETCORE_HTTP_PORTS: 80
+
+volumes:
+  channel-database-data:
