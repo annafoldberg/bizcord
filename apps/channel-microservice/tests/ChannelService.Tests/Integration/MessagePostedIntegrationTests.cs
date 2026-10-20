@@ -17,8 +17,6 @@ public class MessagePostedIntegrationTests
     [Fact]
     public async Task MessagePostedEvent_IsConsumed_AndResultEventPublished()
     {
-        // Real broker and real handler
-
         // Arrange
         var messageClientOptions = new MessageClientOptions
         {
