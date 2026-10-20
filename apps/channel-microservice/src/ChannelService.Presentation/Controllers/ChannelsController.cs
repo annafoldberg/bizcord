@@ -1,3 +1,7 @@
+using ChannelService.Application.Contracts.Channels;
+using ChannelService.Application.Services;
+using Microsoft.AspNetCore.Mvc;
+
 namespace ChannelService.Presentation.Controllers;
 
 [ApiController]
@@ -25,7 +29,7 @@ public sealed class ChannelsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetChannels(CancellationToken ct)
     {
-        var channels = _service.GetChannelsAsync(ct);
+        var channels = await _service.GetChannelsAsync(ct);
         
         return Ok(channels);
     }
@@ -40,7 +44,7 @@ public sealed class ChannelsController : ControllerBase
         return Ok(channel);
     }
 
-    [HttpPatch("{id}")]
+    [HttpPut("{id}")]
     public async Task<IActionResult> UpdateChannel([FromRoute] Guid id, [FromBody] UpdateChannelRequest request, CancellationToken ct)
     {
         var updated = await _service.UpdateChannelAsync(id, request, ct);

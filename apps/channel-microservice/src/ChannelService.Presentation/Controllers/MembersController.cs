@@ -1,3 +1,8 @@
+using ChannelService.Application.Contracts.Members;
+using ChannelService.Application.Services;
+using ChannelService.Application.Services.Results;
+using Microsoft.AspNetCore.Mvc;
+
 namespace ChannelService.Presentation.Controllers;
 
 [ApiController]

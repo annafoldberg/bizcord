@@ -1,6 +1,3 @@
-using MessageClient.Configuration;
-using MessageClient.Extensions;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ChannelService.Application.Messaging;

@@ -3,10 +3,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using ChannelService.Infrastructure.Persistence.Contexts;
+using ChannelService.Application.Persistence.Repositories;
+using ChannelService.Infrastructure.Persistence.Repositories;
 
 namespace ChannelService.Infrastructure.Persistence;
 
-public static class DatabaseExtensions
+public static class PersistenceExtensions
 {
     public static IServiceCollection AddPersistence(
         this IServiceCollection services,
@@ -38,6 +40,12 @@ public static class DatabaseExtensions
             options.UseNpgsql(connectionString);
         });
 
+        services.AddScoped<IChannelDbContext>(
+            provider => provider.GetRequiredService<ChannelDbContext>());
+
+        services.AddScoped<IChannelRepository, ChannelRepository>();
+        services.AddScoped<IMemberRepository, MemberRepository>();
+
         return services;
     }
 
@@ -45,8 +53,7 @@ public static class DatabaseExtensions
     {
         using var scope = serviceProvider.CreateScope();
 
-        var dbContext = scope.ServiceProvider
-            .GetRequiredService<ChannelDbContext>();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ChannelDbContext>();
 
         await dbContext.Database.MigrateAsync();
     }

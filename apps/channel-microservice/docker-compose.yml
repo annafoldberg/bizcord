@@ -13,6 +13,8 @@ services:
 
   channel-database:
     image: postgres:17-alpine
+    ports:
+      - "5432:5432"
     volumes:
       - channel-database-data:/var/lib/postgresql/data
     environment:
@@ -38,6 +40,9 @@ services:
       - "8080:80"
     environment:
       ChannelDatabase__Host: channel-database
+      ChannelDatabase__Name: channels
+      ChannelDatabase__User: postgres
+      ChannelDatabase__Password: postgres
       RabbitMQ__Host: rabbitmq
       ASPNETCORE_HTTP_PORTS: 80
 

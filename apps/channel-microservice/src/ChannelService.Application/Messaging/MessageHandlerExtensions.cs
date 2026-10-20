@@ -10,25 +10,25 @@ public static class MessageHandlerExtensions
         var assembly = typeof(IMessageHandler<>).Assembly;
 
         // Get all concrete classes in the assembly
-        var handlerTypes = assembly.GetTypes()
+        var concreteTypes = assembly.GetTypes()
             .Where(type => type is { IsClass: true, IsAbstract: false });
 
-        foreach (var handlerType in handlerTypes)
+        foreach (var concreteType in concreteTypes)
         {
             // Check if the class implements IMessageHandler<T>
-            var handlerInterfaces = handlerType.GetInterfaces()
+            var handlerInterfaces = concreteType.GetInterfaces()
                 .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IMessageHandler<>));
-
+            
             foreach (var handlerInterface in handlerInterfaces)
             {
                 // Register IMessageHandler<T> with its implementation
-                services.AddScoped(handlerInterface, handlerType);
+                services.AddScoped(handlerInterface, concreteType);
 
                 // Register MessageHandler information for background service
                 services.AddSingleton(new MessageHandlerMetadata
                 {
                     MessageType = handlerInterface.GetGenericArguments()[0],
-                    HandlerType = handlerType
+                    HandlerType = concreteType
                 });
             }
         }

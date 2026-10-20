@@ -8,5 +8,6 @@ public interface IChannelService
     Task<IEnumerable<ChannelResponse>> GetChannelsAsync(CancellationToken ct);
     Task<ChannelResponse?> GetChannelAsync(Guid id, CancellationToken ct);
     Task<bool> UpdateChannelAsync(Guid id, UpdateChannelRequest request, CancellationToken ct);
+    Task<bool> UpdateLastActivityAsync(Guid id, DateTime activityAt, CancellationToken ct);
     Task<bool> DeleteChannelAsync(Guid id, CancellationToken ct);
 }

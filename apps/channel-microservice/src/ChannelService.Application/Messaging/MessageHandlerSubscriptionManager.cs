@@ -9,7 +9,7 @@ public class MessageHandlerSubscriptionManager : IMessageHandlerSubscriptionMana
     private readonly IMessageClient _messageClient;
     private readonly IServiceProvider _serviceProvider;
     private readonly IEnumerable<MessageHandlerMetadata> _handlers;
-    private readonly List<string> _subscriptionIds = [];
+    private readonly List<string> _subscriptions = [];
 
     public MessageHandlerSubscriptionManager(
         IMessageClient messageClient,
@@ -31,26 +31,36 @@ public class MessageHandlerSubscriptionManager : IMessageHandlerSubscriptionMana
                 .MakeGenericMethod(handler.MessageType);
 
             // Call SubscribeHandlerAsync for the handler
-            await (Task)method.Invoke(this, [handler.HandlerType, ct])!;
+            await (Task)method.Invoke(this, [ct])!;
         }
     }
 
     public async Task UnsubscribeAsync()
     {
-        foreach (var subscriptionId in _subscriptionIds)
-            await _messageClient.UnsubscribeAsync(subscriptionId);
+        foreach (var _subscription in _subscriptions)
+            await _messageClient.UnsubscribeAsync(_subscription);
     }
 
-    private async Task SubscribeHandlerAsync<TMessage>(Type handlerType, CancellationToken ct)
+    private async Task SubscribeHandlerAsync<TMessage>(CancellationToken ct)
     {
-        // Get the registered handler for the message type
-        var handler = (IMessageHandler<TMessage>)_serviceProvider.GetRequiredService(handlerType);
-
-        // Create subscription ID
-        var subscriptionId = typeof(TMessage).Name;
-        _subscriptionIds.Add(subscriptionId);
+        // Set subscription to the message type name
+        var subscription = typeof(TMessage).Name;
 
         // Subscribe the handler to the message type
-        await _messageClient.SubscribeAsync<TMessage>(subscriptionId, message => handler.HandleAsync(message, ct), ct);
+        await _messageClient.SubscribeAsync<TMessage>(
+            subscription,
+            message => _ = HandleMessageAsync(message, ct), ct);
+
+        _subscriptions.Add(subscription);
+    }
+
+    private async Task HandleMessageAsync<TMessage>(TMessage message, CancellationToken ct)
+    {
+        await using var scope = _serviceProvider.CreateAsyncScope();
+
+        // Get the registered handler for the message type
+        var handler = scope.ServiceProvider.GetRequiredService<IMessageHandler<TMessage>>();
+
+        await handler.HandleAsync(message, ct);
     }
 }

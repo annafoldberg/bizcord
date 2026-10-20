@@ -13,7 +13,8 @@ public static class ChannelMappings
             Name = channel.Name,
             Description = channel.Description,
             CreatedAt = channel.CreatedAt,
-            LastUpdatedAt = channel.LastUpdatedAt
+            LastUpdatedAt = channel.LastUpdatedAt,
+            LastActivityAt = channel.LastActivityAt
         };
     }
 

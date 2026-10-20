@@ -9,42 +9,25 @@ ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 
 # Copy and restore project files for caching
-COPY ["apps/channel-microservice/src/ChannelService.Presentation/ChannelService.Presentation.csproj",
-      "apps/channel-microservice/src/ChannelService.Presentation/"]
+COPY ["apps/channel-microservice/src/ChannelService.Presentation/ChannelService.Presentation.csproj", "apps/channel-microservice/src/ChannelService.Presentation/"]
 
-COPY ["apps/channel-microservice/src/ChannelService.Infrastructure/ChannelService.Infrastructure.csproj",
-      "apps/channel-microservice/src/ChannelService.Infrastructure/"]
+COPY ["apps/channel-microservice/src/ChannelService.Infrastructure/ChannelService.Infrastructure.csproj", "apps/channel-microservice/src/ChannelService.Infrastructure/"]
 
-COPY ["apps/channel-microservice/src/ChannelService.Application/ChannelService.Application.csproj",
-      "apps/channel-microservice/src/ChannelService.Application/"]
+COPY ["apps/channel-microservice/src/ChannelService.Application/ChannelService.Application.csproj", "apps/channel-microservice/src/ChannelService.Application/"]
 
-COPY ["apps/channel-microservice/src/ChannelService.Domain/ChannelService.Domain.csproj",
-      "apps/channel-microservice/src/ChannelService.Domain/"]
+COPY ["apps/channel-microservice/src/ChannelService.Domain/ChannelService.Domain.csproj", "apps/channel-microservice/src/ChannelService.Domain/"]
 
-COPY ["packages/MessageClient/src/MessageClient.csproj", "../../packages/MessageClient/src/"]
-COPY ["packages/Messages/Messages.csproj", "../../packages/Messages"]
+COPY ["packages/MessageClient/src/MessageClient.csproj", "packages/MessageClient/src/"]
+
+COPY ["packages/Shared.Contracts/Shared.Contracts.csproj", "packages/Shared.Contracts/"]
 
 RUN dotnet restore "apps/channel-microservice/src/ChannelService.Presentation/ChannelService.Presentation.csproj"
 
 # Copy, build, and output
 WORKDIR /src
+COPY . .
 
-COPY ["apps/channel-microservice/src/ChannelService.Presentation/ChannelService.Presentation.csproj",
-      "apps/channel-microservice/src/ChannelService.Presentation/"]
-
-COPY ["apps/channel-microservice/src/ChannelService.Infrastructure/ChannelService.Infrastructure.csproj",
-      "apps/channel-microservice/src/ChannelService.Infrastructure/"]
-
-COPY ["apps/channel-microservice/src/ChannelService.Application/ChannelService.Application.csproj",
-      "apps/channel-microservice/src/ChannelService.Application/"]
-
-COPY ["apps/channel-microservice/src/ChannelService.Domain/ChannelService.Domain.csproj",
-      "apps/channel-microservice/src/ChannelService.Domain/"]
-
-COPY ["packages/MessageClient/src/MessageClient.csproj", "../../packages/MessageClient/src/"]
-COPY ["packages/Messages/Messages.csproj", "../../packages/Messages"]
-
-WORKDIR "apps/channel-microservice/src/ChannelService.Presentation/"
+WORKDIR /src/apps/channel-microservice/src/ChannelService.Presentation
 
 RUN dotnet build "ChannelService.Presentation.csproj" -c $BUILD_CONFIGURATION -o /app/build
 

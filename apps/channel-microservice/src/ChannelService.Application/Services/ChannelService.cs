@@ -29,7 +29,7 @@ public sealed class ChannelService : IChannelService
         var owner = new Member
         {
             ChannelId = channel.Id,
-            UserId = request.UserId,
+            UserId = request.OwnerUserId,
             Role = MemberRole.Owner
         };
 
@@ -66,25 +66,30 @@ public sealed class ChannelService : IChannelService
             return false;
         }
 
-        var isUpdated = false;
+        channel.Name = request.Name;
+        channel.Description = request.Description;
 
-        if (request.Name is not null)
+        channel.LastUpdatedAt = DateTime.UtcNow;
+        await _channelRepository.UpdateAsync(channel, ct);
+        _logger.LogInformation("Channel {ChannelId} updated.", channel.PublicId);
+
+        return true;
+    }
+
+    public async Task<bool> UpdateLastActivityAsync(Guid id, DateTime activityAt, CancellationToken ct)
+    {
+        var channel = await _channelRepository.GetByPublicIdAsync(id, ct);
+
+        if (channel is null)
         {
-            channel.Name = request.Name;
-            isUpdated = true;
+            _logger.LogWarning("Channel activity update failed because channel {ChannelId} was not found.", id);
+            return false;
         }
 
-        if (request.Description is not null)
+        if (channel.LastActivityAt is null || activityAt > channel.LastActivityAt)
         {
-            channel.Description = request.Description;
-            isUpdated = true;
-        }
-        
-        if (isUpdated)
-        {
-            channel.LastUpdatedAt = DateTime.UtcNow;
+            channel.LastActivityAt = activityAt;
             await _channelRepository.UpdateAsync(channel, ct);
-            _logger.LogInformation("Channel {ChannelId} updated.", channel.PublicId);
         }
 
         return true;

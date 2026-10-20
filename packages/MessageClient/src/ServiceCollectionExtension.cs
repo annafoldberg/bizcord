@@ -2,16 +2,15 @@ using Microsoft.Extensions.DependencyInjection;
 using MessageClient.Configuration;
 using MessageClient.Factories;
 using MessageClient.Interfaces;
-using MessageClient.Implementation;
 
 namespace MessageClient.Extensions;
 
-public static class ServiceCollectionExtension {
-    
+public static class ServiceCollectionExtension
+{
     public static IServiceCollection AddMessageClient(
         this IServiceCollection services,
-        Action<MessageClientOptions> configureOptions
-    ){
+        Action<MessageClientOptions> configureOptions)
+    {
         MessageClientOptions options = new MessageClientOptions();
         configureOptions(options);
 
@@ -31,8 +30,8 @@ public static class ServiceCollectionExtension {
     
     public static IServiceCollection AddMessageHandler(
         this IServiceCollection services,
-        Action<MessageClientOptions> configureClientOptions
-    ){
+        Action<MessageClientOptions> configureClientOptions)
+    {
         services.AddMessageClient(configureClientOptions);
         
         return services;

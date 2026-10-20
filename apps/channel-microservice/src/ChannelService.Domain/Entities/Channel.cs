@@ -8,4 +8,5 @@ public class Channel
     public string? Description { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastUpdatedAt { get; set; }
+    public DateTime? LastActivityAt { get; set; }
 }
