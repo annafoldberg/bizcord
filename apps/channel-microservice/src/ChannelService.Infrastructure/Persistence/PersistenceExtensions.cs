@@ -5,18 +5,29 @@ using Microsoft.Extensions.Configuration;
 using ChannelService.Infrastructure.Persistence.Contexts;
 using ChannelService.Application.Persistence.Repositories;
 using ChannelService.Infrastructure.Persistence.Repositories;
+using ChannelService.Infrastructure.Vault;
 
 namespace ChannelService.Infrastructure.Persistence;
 
 public static class PersistenceExtensions
 {
-    public static IServiceCollection AddPersistence(
+    public static async Task<IServiceCollection> AddPersistenceAsync(
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        var databasePassword = await VaultSecretReader.GetDatabasePasswordAsync();
+
+        var databaseConfiguration = new ConfigurationBuilder()
+            .AddConfiguration(configuration)
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [$"{DatabaseOptions.SectionName}:Password"] = databasePassword
+            })
+            .Build();
+
         services
             .AddOptions<DatabaseOptions>()
-            .Bind(configuration.GetSection(DatabaseOptions.SectionName))
+            .Bind(databaseConfiguration.GetSection(DatabaseOptions.SectionName))
             .Validate(options =>
                 !string.IsNullOrWhiteSpace(options.Host) &&
                 !string.IsNullOrWhiteSpace(options.Name) &&
@@ -37,7 +48,15 @@ public static class PersistenceExtensions
                 $"Username={databaseOptions.User};" +
                 $"Password={databaseOptions.Password}";
                 
-            options.UseNpgsql(connectionString);
+            options.UseNpgsql(connectionString, npgsqlOptions =>
+            {
+                npgsqlOptions.EnableRetryOnFailure(
+                    maxRetryCount: 3,
+                    maxRetryDelay: TimeSpan.FromSeconds(5),
+                    errorCodesToAdd: null);
+
+                npgsqlOptions.CommandTimeout(10);
+            });
         });
 
         services.AddScoped<IChannelDbContext>(

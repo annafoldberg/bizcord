@@ -11,7 +11,7 @@ public class RabbitMQAdapter : IMessageClient {
         _bus = bus;
     }
 
-    public async Task SubscribeAsync<T>(string subscription, Action<T> handler, CancellationToken cancellationToken = default)
+    public async Task SubscribeAsync<T>(string subscription, Func<T, Task> handler, CancellationToken cancellationToken = default)
     {
         if(_subscriptions.Keys.Contains(subscription))
             throw new ArgumentException("");

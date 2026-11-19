@@ -6,7 +6,7 @@ public class FakeMessageClient : IMessageClient
 {
     public List<object> Published { get; } = new();
 
-    public Task SubscribeAsync<T>(string subscription, Action<T> handler, CancellationToken cancellationToken = default)
+    public Task SubscribeAsync<T>(string subscription, Func<T, Task> handler, CancellationToken cancellationToken = default)
     {
         return Task.CompletedTask;
     }

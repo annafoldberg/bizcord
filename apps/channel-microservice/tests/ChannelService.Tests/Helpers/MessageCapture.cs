@@ -14,7 +14,11 @@ public sealed class MessageCapture<T>
     {
         client.SubscribeAsync<T>(
             $"test-{Guid.NewGuid()}",
-            message => _result.TrySetResult(message)
+            message =>
+            {
+                _result.TrySetResult(message);
+                return Task.CompletedTask;
+            }
         ).GetAwaiter().GetResult();
     }
 
