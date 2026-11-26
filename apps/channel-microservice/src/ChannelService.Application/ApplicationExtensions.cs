@@ -10,7 +10,8 @@ public static class ApplicationExtensions
     {
         services.AddScoped<IChannelService, ChannelService.Application.Services.ChannelService>();
         services.AddScoped<IMemberService, MemberService>();
-
+        services.AddScoped<IUserBanSagaService, UserBanSagaService>();
+        
         services.AddApplicationMessaging();
 
         return services;

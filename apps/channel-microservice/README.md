@@ -10,7 +10,7 @@ Supports:
 
 ## Architecture
 ChannelService follows a layered architecture:
-- **Presentation:** Exposes REST endpoints.
+- **Presentation:** Exposes REST and GraphQL endpoints.
 - **Application:** Contains application services, contracts, mappings, message handlers, and persistence interfaces.
 - **Domain:** Defines domain entities and enums.
 - **Infrastructure:** Implements persistence and configures database and RabbitMQ connections.
@@ -62,7 +62,11 @@ ChannelService exposes REST endpoints for channel and membership management thro
 - `ChannelsController`
 - `MembersController`
 
-See [API Endpoints](#api-endpoints) for available operations.
+ChannelService also exposes a GraphQL API through:
+- `ChannelQuery`
+- `ChannelMutation`
+
+See [API Endpoints](#api-endpoints) and [GraphQL API](#graphql-api) for available operations.
 
 ### Asynchronous Communication
 ChannelService uses RabbitMQ for asynchronous event-driven communication with other services.
@@ -273,6 +277,114 @@ Returned by:
 | `lastUpdatedAt` | DateTime | Yes | Timestamp of the last membership update |
 
 `GET /channels/{channelId}/members` returns a collection of `MemberResponse` objects.
+
+## GraphQL API
+ChannelService exposes a GraphQL API alongside the existing REST API using HotChocolate. The GraphQL presentation layer follows the Backend for Frontend (BFF) pattern, allowing clients to request specific fields and combine multiple application service operations into a single request.
+
+The implementation is located in the Presentation layer under `GraphQL/`:
+- **ChannelQuery:** Defines operations for retrieving channels and channel memberships.
+- **ChannelMutation:** Defines operations for creating, updating, and deleting channels and managing channel memberships.
+- **ChannelWithMembersResponse:** Defines a GraphQL-specific response containing both channel and membership information.
+
+All queries and mutations reuse the existing application services, `IChannelService` and `IMemberService`, without introducing additional business logic or persistence dependencies.
+
+### Configuration
+HotChocolate is registered in `Program.cs`:
+```csharp
+builder.Services
+    .AddGraphQLServer()
+    .AddQueryType<ChannelQuery>()
+    .AddMutationType<ChannelMutation>();
+```
+
+The GraphQL endpoint is exposed through:
+```csharp
+app.MapGraphQL();
+```
+
+The GraphQL API is available at `/graphql`.
+
+### Queries
+| Query | Description |
+|---|---|
+| `channels` | Retrieve all channels |
+| `channel` | Retrieve a channel by ID |
+| `channelWithMembers` | Retrieve a channel and its members |
+| `channelMembers` | Retrieve all members of a channel |
+| `member` | Retrieve a specific channel member |
+
+Queries are implemented in `ChannelQuery`.
+
+### Mutations
+| Mutation | Description |
+|---|---|
+| `createChannel` | Create a channel |
+| `updateChannel` | Update a channel |
+| `deleteChannel` | Delete a channel |
+| `addMember` | Add a member to a channel |
+| `addMemberWithRole` | Add a member to a channel and assign a role |
+| `updateMemberRole` | Update a member's role |
+| `removeMember` | Remove a member from a channel |
+
+Mutations are implemented in `ChannelMutation`.
+
+Existing membership rules are enforced through the application services. Failed membership mutations return GraphQL errors describing the reason for the failure.
+
+### Backend for Frontend (BFF)
+In addition to exposing existing channel and membership operations, the GraphQL presentation layer provides two composite operations tailored to frontend requirements.
+
+#### GetChannelWithMembers
+Combines the following application service operations:
+1. `IChannelService.GetChannelAsync()`
+2. `IMemberService.GetChannelMembersAsync()`
+
+The results are combined into a `ChannelWithMembersResponse`, allowing clients to retrieve channel information and its members through a single GraphQL query.
+
+Example:
+```graphql
+query {
+  channelWithMembers(id: "0b53a2e2-ed57-4372-831c-a44d763140f6") {
+    channel {
+      id
+      name
+      description
+    }
+    members {
+      userId
+      role
+    }
+  }
+}
+```
+
+#### AddMemberWithRole
+Combines the following application service operations:
+1. `IMemberService.AddMemberAsync()`
+2. `IMemberService.UpdateMemberRoleAsync()`
+3. `IMemberService.GetMemberAsync()`
+
+The mutation allows clients to add a member and assign a specific role through a single GraphQL request. The member is retrieved after the role update to ensure that the returned response contains the updated membership information.
+
+Example:
+```graphql
+mutation {
+  addMemberWithRole(
+    channelId: "0b53a2e2-ed57-4372-831c-a44d763140f6"
+    request: {
+      userId: "a12c45e6-1234-4567-8901-123456789abc"
+    }
+    role: MODERATOR
+  ) {
+    channelId
+    userId
+    role
+  }
+}
+```
+
+The individual service operations are not executed within a shared transaction. If the member is successfully added but the role update fails, the membership remains and a GraphQL error is returned.
+
+Both composite operations reduce the number of requests required from the frontend while keeping the existing application services unchanged.
 
 ## Events
 ChannelService communicates asynchronously through RabbitMQ using event contracts defined in `Shared.Contracts`:

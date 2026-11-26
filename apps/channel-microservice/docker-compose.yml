@@ -1,4 +1,19 @@
 services:
+  fluentd:
+    image: fluent/fluentd:latest
+    container_name: fluentd
+    user: root
+    logging:
+      driver: "local"
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    volumes:
+      - ./fluentd/fluent.conf:/fluentd/etc/fluent.conf
+      - /var/lib/docker/containers:/fluentd/log/containers:ro
+    environment:
+      - FLUENTD_CONF=fluent.conf
+
   rabbitmq:
     image: rabbitmq:3-management
     container_name: "rabbitmq"
@@ -31,12 +46,16 @@ services:
     build:
       context: ../..
       dockerfile: apps/channel-microservice/Dockerfile
+    logging:
+      driver: "json-file"
     restart: unless-stopped
     depends_on:
       rabbitmq:
         condition: service_healthy
       channel-database:
         condition: service_healthy
+      fluentd:
+        condition: service_started
     ports:
       - "8100:80"
     environment:

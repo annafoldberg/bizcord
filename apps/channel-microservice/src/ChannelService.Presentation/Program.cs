@@ -3,6 +3,7 @@ using ChannelService.Infrastructure.Messaging;
 using ChannelService.Infrastructure.Persistence;
 using ChannelService.Application;
 using ChannelService.Presentation.Middleware;
+using ChannelService.Presentation.GraphQL;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +20,11 @@ builder.Services
 
 builder.Services.AddSwaggerGen();
 
+builder.Services
+    .AddGraphQLServer()
+    .AddQueryType<ChannelQuery>()
+    .AddMutationType<ChannelMutation>();
+
 var app = builder.Build();
 
 await app.Services.ApplyMigrationsAsync();
@@ -34,6 +40,8 @@ app.UseHttpsRedirection();
 app.UseMiddleware<IdentityLoggingMiddleware>();
 
 app.MapControllers();
+app.MapGraphQL();
+
 app.MapHealthChecks("/health");
 
 app.Run();
