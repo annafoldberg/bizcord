@@ -427,6 +427,65 @@ However, health checks alone do not trigger automatic restarts, and successful r
 ## Security
 All ChannelService HTTP endpoints are intended for authenticated users and are protected through JWT authentication and scope-based authorization at the API Gateway. Any communication between microservices is handled asynchronously through RabbitMQ, where MessagePostedHandler processes incoming events without exposing an HTTP endpoint. Therefore, no additional gateway routes for internal service-to-service communication have been introduced.
 
+## Saga Workflow Scenario
+A user gets banned mid-conversation: A moderator bans a user who is currently active in several channels and an ongoing voice call.
+
+### Overview
+
+#### User Management
+- Transaction: Mark user as banned and invalidate all active sessions
+- Compensation: Unban user and restore session access if channel membership removal fails
+- Limitation: Invalidated sessions may not be recoverable, meaning the user must log in again
+
+#### Channel
+- Transaction: Forcibly remove user from each channel they are in and post a system message that the user was removed
+- Compensation: Restore previously removed channel memberships and roles, and delete associated system messages if a subsequent channel removal fails
+- Limitation: System messages may already have been delivered or seen by other users and cannot be fully retracted
+
+#### Streaming / VoIP
+- Transaction: Terminate any active voice or video sessions immediately
+- Compensation: None (streaming termination failures do not reverse the ban)
+- Limitation: Terminated calls cannot be restored
+
+#### The Hard Question
+If the ban succeeds but voice termination fails, the user remains banned, but the saga is not fully completed. Voice termination should be retried rather than compensating the ban or channel removals. If retries continue to fail, the failure should be logged and an administrator alerted for manual intervention.
+
+### Design
+**Step 1: Ban user**
+- Started by: BanUser
+- Success: BanSucceeded
+- Failure: BanFailed (saga ends, nothing to compensate)
+- Compensation: UnbanUser (triggered if step 2 fails)
+
+**Step 2: Remove user's channel memberships**
+- Started by: BanSucceeded
+- Success: MembershipRemovalSucceeded
+- Failure: MembershipRemovalFailed (must compensate step 1)
+- Compensation: RestoreMemberships (restores previously removed memberships and roles, and requests deletion of corresponding system messages)
+- Compensation failure: If membership restoration fails, the failure is logged and requires manual intervention rather than publishing MembershipRemovalFailed
+
+If an individual membership removal fails, ChannelService compensates previously completed removals before publishing MembershipRemovalFailed.
+
+System messages are handled asynchronously by MessageService. Failures to create or delete system messages do not affect the Saga outcome.
+
+**Step 3: Terminate streaming**
+- Started by: MembershipRemovalSucceeded
+- Success: StreamingTerminationSucceeded (saga completes)
+- Failure: StreamingTerminationFailed (retry termination, escalate if retries fail)
+- Compensation: None (termination cannot be undone)
+
+A streaming termination failure won't trigger compensation of the ban or channel membership removals.
+
+#### Rollback and Compensation
+- Local rollback: EF Core rolls back any uncommitted database changes if an individual channel membership removal fails
+- Saga compensation: If step 2 partially fails, ChannelService restores previously committed membership removals with `RestoreMemberships` and requests deletion of the corresponding system messages. Only after membership restoration succeeds is `MembershipRemovalFailed` published, triggering `UnbanUser` in User Management
+- Limitation: Deleting system messages cannot undo information already seen by other users
+
+#### Chosen Approach
+I chose choreography because it aligns well with the existing implementation and use of RabbitMQ for communication between microservices. The chosen scenario follows a relatively simple and linear workflow, with limited coordination requirements. While orchestration could be beneficial for a more complex Saga with additional steps and dependencies, it would require introducing a central component to coordinate the workflow, adding unnecessary complexity and an additional dependency in this case.
+
+The Saga state is stored locally in each participating service’s database, allowing each service to track its own progress and handle compensation independently. In ChannelService, the state tracks membership removal and compensation, while preserving the original memberships so they can be restored if a failure occurs.
+
 ## Running the Project with Docker
 > Note: The following commands should be run from the repository root.
 

@@ -64,6 +64,8 @@ public static class PersistenceExtensions
 
         services.AddScoped<IChannelRepository, ChannelRepository>();
         services.AddScoped<IMemberRepository, MemberRepository>();
+        services.AddScoped<IUserBanSagaStateRepository, UserBanSagaStateRepository>();
+        services.AddScoped<IUserBanSagaMembershipRepository, UserBanSagaMembershipRepository>();
 
         return services;
     }
