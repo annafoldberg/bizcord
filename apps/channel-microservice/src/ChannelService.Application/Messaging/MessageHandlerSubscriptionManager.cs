@@ -49,7 +49,7 @@ public class MessageHandlerSubscriptionManager : IMessageHandlerSubscriptionMana
         // Subscribe the handler to the message type
         await _messageClient.SubscribeAsync<TMessage>(
             subscription,
-            message => _ = HandleMessageAsync(message, ct), ct);
+            message => HandleMessageAsync(message, ct), ct);
 
         _subscriptions.Add(subscription);
     }

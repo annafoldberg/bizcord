@@ -17,7 +17,7 @@ namespace ChannelService.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.4")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -93,11 +93,86 @@ namespace ChannelService.Infrastructure.Migrations
                     b.ToTable("Members");
                 });
 
+            modelBuilder.Entity("ChannelService.Domain.Entities.UserBanSagaMembership", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ChannelId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsRemoved")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SagaId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SagaId", "ChannelId")
+                        .IsUnique();
+
+                    b.ToTable("UserBanSagaMemberships");
+                });
+
+            modelBuilder.Entity("ChannelService.Domain.Entities.UserBanSagaState", b =>
+                {
+                    b.Property<Guid>("SagaId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("BanSucceeded")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsCompleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsFailed")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("MembershipsRemoved")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("MembershipsRestored")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("SagaId");
+
+                    b.ToTable("UserBanSagaStates");
+                });
+
             modelBuilder.Entity("ChannelService.Domain.Entities.Member", b =>
                 {
                     b.HasOne("ChannelService.Domain.Entities.Channel", null)
                         .WithMany()
                         .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ChannelService.Domain.Entities.UserBanSagaMembership", b =>
+                {
+                    b.HasOne("ChannelService.Domain.Entities.UserBanSagaState", null)
+                        .WithMany()
+                        .HasForeignKey("SagaId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

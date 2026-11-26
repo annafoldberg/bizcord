@@ -12,7 +12,9 @@ public sealed class ChannelDbContext : DbContext, IChannelDbContext
 
     public DbSet<Channel> Channels { get; set; }
     public DbSet<Member> Members { get; set; }
-
+    public DbSet<UserBanSagaState> UserBanSagaStates { get; set; }
+    public DbSet<UserBanSagaMembership> UserBanSagaMemberships { get; set; }
+    
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ChannelDbContext).Assembly);

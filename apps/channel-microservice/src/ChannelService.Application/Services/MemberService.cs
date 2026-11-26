@@ -149,10 +149,7 @@ public sealed class MemberService : IMemberService
         return UpdateMemberRoleResult.Success;
     }
 
-    public async Task<RemoveMemberResult> RemoveMemberAsync(
-        Guid channelId,
-        Guid userId,
-        CancellationToken ct)
+    public async Task<RemoveMemberResult> RemoveMemberAsync(Guid channelId, Guid userId, CancellationToken ct)
     {
         var channel = await _channelRepository.GetByPublicIdAsync(channelId, ct);
 

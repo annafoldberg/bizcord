@@ -7,5 +7,7 @@ public interface IChannelDbContext
 {
     DbSet<Channel> Channels { get; }
     DbSet<Member> Members { get; }
+    DbSet<UserBanSagaState> UserBanSagaStates { get; }
+    DbSet<UserBanSagaMembership> UserBanSagaMemberships { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default );
 }

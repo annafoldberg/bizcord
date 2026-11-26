@@ -1,10 +1,25 @@
 services:
+  fluentd:
+    image: fluent/fluentd:latest
+    container_name: fluentd
+    user: root
+    logging:
+      driver: "local"
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    volumes:
+      - ./fluentd/fluent.conf:/fluentd/etc/fluent.conf
+      - /var/lib/docker/containers:/fluentd/log/containers:ro
+    environment:
+      - FLUENTD_CONF=fluent.conf
+
   rabbitmq:
     image: rabbitmq:3-management
     container_name: "rabbitmq"
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "5673:5672"
+      - "15673:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 2s
@@ -31,20 +46,39 @@ services:
     build:
       context: ../..
       dockerfile: apps/channel-microservice/Dockerfile
+    logging:
+      driver: "json-file"
+    restart: unless-stopped
     depends_on:
       rabbitmq:
         condition: service_healthy
       channel-database:
         condition: service_healthy
+      fluentd:
+        condition: service_started
     ports:
-      - "8080:80"
+      - "8100:80"
     environment:
       ChannelDatabase__Host: channel-database
       ChannelDatabase__Name: channels
       ChannelDatabase__User: postgres
-      ChannelDatabase__Password: postgres
       RabbitMQ__Host: rabbitmq
       ASPNETCORE_HTTP_PORTS: 80
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_TOKEN}
+    networks:
+      - default
+      - vault-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:80/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
 
 volumes:
   channel-database-data:
+
+networks:
+  vault-network:
+    external: true

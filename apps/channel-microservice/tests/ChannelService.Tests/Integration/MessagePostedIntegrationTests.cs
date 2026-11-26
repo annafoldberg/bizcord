@@ -20,7 +20,7 @@ public class MessagePostedIntegrationTests
         // Arrange
         var messageClientOptions = new MessageClientOptions
         {
-            ConnectionString = "host=localhost",
+            ConnectionString = "host=localhost;port=5673;username=guest;password=guest",
             MessagingProvider = MessagingProvider.RabbitMQ
         };
 
@@ -40,7 +40,7 @@ public class MessagePostedIntegrationTests
         await repository.AddAsync(new Channel
         {
             PublicId = channelId,
-            Name = "Integration Test Channel"
+            Name = "Integration Test Channel {channelId}"
         }, CancellationToken.None);
 
         var capture = new MessageCapture<ActivityProcessedEvent>(client);

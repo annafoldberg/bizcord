@@ -10,7 +10,7 @@ Supports:
 
 ## Architecture
 ChannelService follows a layered architecture:
-- **Presentation:** Exposes REST endpoints.
+- **Presentation:** Exposes REST and GraphQL endpoints.
 - **Application:** Contains application services, contracts, mappings, message handlers, and persistence interfaces.
 - **Domain:** Defines domain entities and enums.
 - **Infrastructure:** Implements persistence and configures database and RabbitMQ connections.
@@ -62,7 +62,11 @@ ChannelService exposes REST endpoints for channel and membership management thro
 - `ChannelsController`
 - `MembersController`
 
-See [API Endpoints](#api-endpoints) for available operations.
+ChannelService also exposes a GraphQL API through:
+- `ChannelQuery`
+- `ChannelMutation`
+
+See [API Endpoints](#api-endpoints) and [GraphQL API](#graphql-api) for available operations.
 
 ### Asynchronous Communication
 ChannelService uses RabbitMQ for asynchronous event-driven communication with other services.
@@ -274,10 +278,325 @@ Returned by:
 
 `GET /channels/{channelId}/members` returns a collection of `MemberResponse` objects.
 
+## GraphQL API
+ChannelService exposes a GraphQL API alongside the existing REST API using HotChocolate. The GraphQL presentation layer follows the Backend for Frontend (BFF) pattern, allowing clients to request specific fields and combine multiple application service operations into a single request.
+
+The implementation is located in the Presentation layer under `GraphQL/`:
+- **ChannelQuery:** Defines operations for retrieving channels and channel memberships.
+- **ChannelMutation:** Defines operations for creating, updating, and deleting channels and managing channel memberships.
+- **ChannelWithMembersResponse:** Defines a GraphQL-specific response containing both channel and membership information.
+
+All queries and mutations reuse the existing application services, `IChannelService` and `IMemberService`, without introducing additional business logic or persistence dependencies.
+
+### Configuration
+HotChocolate is registered in `Program.cs`:
+```csharp
+builder.Services
+    .AddGraphQLServer()
+    .AddQueryType<ChannelQuery>()
+    .AddMutationType<ChannelMutation>();
+```
+
+The GraphQL endpoint is exposed through:
+```csharp
+app.MapGraphQL();
+```
+
+The GraphQL API is available at `/graphql`.
+
+### Queries
+| Query | Description |
+|---|---|
+| `channels` | Retrieve all channels |
+| `channel` | Retrieve a channel by ID |
+| `channelWithMembers` | Retrieve a channel and its members |
+| `channelMembers` | Retrieve all members of a channel |
+| `member` | Retrieve a specific channel member |
+
+Queries are implemented in `ChannelQuery`.
+
+### Mutations
+| Mutation | Description |
+|---|---|
+| `createChannel` | Create a channel |
+| `updateChannel` | Update a channel |
+| `deleteChannel` | Delete a channel |
+| `addMember` | Add a member to a channel |
+| `addMemberWithRole` | Add a member to a channel and assign a role |
+| `updateMemberRole` | Update a member's role |
+| `removeMember` | Remove a member from a channel |
+
+Mutations are implemented in `ChannelMutation`.
+
+Existing membership rules are enforced through the application services. Failed membership mutations return GraphQL errors describing the reason for the failure.
+
+### Backend for Frontend (BFF)
+In addition to exposing existing channel and membership operations, the GraphQL presentation layer provides two composite operations tailored to frontend requirements.
+
+#### GetChannelWithMembers
+Combines the following application service operations:
+1. `IChannelService.GetChannelAsync()`
+2. `IMemberService.GetChannelMembersAsync()`
+
+The results are combined into a `ChannelWithMembersResponse`, allowing clients to retrieve channel information and its members through a single GraphQL query.
+
+Example:
+```graphql
+query {
+  channelWithMembers(id: "0b53a2e2-ed57-4372-831c-a44d763140f6") {
+    channel {
+      id
+      name
+      description
+    }
+    members {
+      userId
+      role
+    }
+  }
+}
+```
+
+#### AddMemberWithRole
+Combines the following application service operations:
+1. `IMemberService.AddMemberAsync()`
+2. `IMemberService.UpdateMemberRoleAsync()`
+3. `IMemberService.GetMemberAsync()`
+
+The mutation allows clients to add a member and assign a specific role through a single GraphQL request. The member is retrieved after the role update to ensure that the returned response contains the updated membership information.
+
+Example:
+```graphql
+mutation {
+  addMemberWithRole(
+    channelId: "0b53a2e2-ed57-4372-831c-a44d763140f6"
+    request: {
+      userId: "a12c45e6-1234-4567-8901-123456789abc"
+    }
+    role: MODERATOR
+  ) {
+    channelId
+    userId
+    role
+  }
+}
+```
+
+The individual service operations are not executed within a shared transaction. If the member is successfully added but the role update fails, the membership remains and a GraphQL error is returned.
+
+Both composite operations reduce the number of requests required from the frontend while keeping the existing application services unchanged.
+
 ## Events
 ChannelService communicates asynchronously through RabbitMQ using event contracts defined in `Shared.Contracts`:
 - **MessagePostedEvent:** Consumed to update the channel's last activity timestamp when a message is posted.
 - **ActivityProcessedEvent:** Published after channel activity has been successfully processed.
+
+## Potential Failure Points
+Identified failure points include:
+- Database becomes unavailable: Channel/member operations fail.
+- Message broker becomes unavailable: Asynchronous communication with other microservices fails => messages may not be published or consumed.
+- Message processing fails: Messages may be lost.
+- Vault is sealed or unavailable during startup, or token expires before startup: ChannelService cannot retrieve its database password and fails to start.
+- Service crashes or becomes unavailable: Other services or clients cannot access channel functionality.
+- Concurrent requests modify the same channel or membership: Potential race conditions or inconsistent results.
+
+### Implementation of Reliability Measures
+
+#### Database becomes unavailable: Channel/member operations fail
+**Resiliency patterns:**  
+Retry and Timeout. EF Core/Npgsql retries transient database failures up to three times, while a 10-second command timeout limits how long database commands can execute.
+
+**Implementation:**
+Channel/member operations depend on PostgreSQL and may fail or experience delays when the database becomes unavailable or unresponsive. To mitigate temporary failures, retry and timeout policies are introduced in the Infrastructure layer through `PersistenceExtensions.cs`.
+
+Previously, the database connection was configured without explicit retry or command timeout settings:
+```csharp
+options.UseNpgsql(connectionString);
+```
+
+This is replaced with:
+```csharp
+options.UseNpgsql(connectionString, npgsqlOptions =>
+{
+    npgsqlOptions.EnableRetryOnFailure(
+        maxRetryCount: 3,
+        maxRetryDelay: TimeSpan.FromSeconds(5),
+        errorCodesToAdd: null);
+
+    npgsqlOptions.CommandTimeout(10);
+});
+```
+
+`EnableRetryOnFailure` retries transient database failures up to three times, using exponential backoff with a maximum delay of five seconds. `CommandTimeout` limits individual database commands to ten seconds, although the total request duration may be longer.
+
+**Testing:**  
+Two failure scenarios were simulated:
+1. **Database paused:** PostgreSQL was paused while requesting `GET /channels`, then resumed. The database command completed successfully after PostgreSQL was resumed, demonstrating recovery from temporary unresponsiveness. No retry was observed.
+2. **Database stopped:** PostgreSQL was stopped while requesting `GET /channels`. EF Core attempted to reconnect but eventually threw `RetryLimitExceededException`, confirming that the configured retry limit was enforced.
+
+The tests show that the service can recover when the database becomes available again, but if the database stays unavailable, the retries eventually run out and the request fails.
+
+The command timeout was tested by temporarily adding a 15-second delay to the database query:
+```csharp
+public async Task<IEnumerable<Channel>> GetChannelsAsync(CancellationToken ct = default)
+{
+    return await _context.Channels
+        .FromSqlRaw("""
+            SELECT *
+            FROM "Channels"
+            WHERE (SELECT pg_sleep(15) IS NULL)
+            """)
+        .ToListAsync(ct);
+}
+```
+
+The command failed after approximately ten seconds with a timeout exception, and EF Core attempted to retry it. This confirmed that both the command timeout and retry mechanism were applied.
+
+#### Message processing fails: Messages may be lost
+**Resiliency pattern:**  
+Failed-message preservation. Asynchronous handler exceptions propagate to EasyNetQ, allowing failed messages to be preserved in RabbitMQ's error queue instead of being silently lost.
+
+**Implementation:**
+Message processing previously used fire-and-forget, meaning that asynchronous handlers were started without awaiting their completion. If processing failed, EasyNetQ could not detect the exception, potentially causing messages to be lost. To prevent this, the message subscription mechanism was updated in the shared `MessageClient` package and `MessageHandlerSubscriptionManager.cs`.
+
+Previously, `SubscribeAsync<T>` accepted an `Action<T>` handler, and `MessageHandlerSubscriptionManager` discarded the returned task:
+```csharp
+await _messageClient.SubscribeAsync<TMessage>(
+    subscription,
+    message => _ = HandleMessageAsync(message, ct),
+    ct);
+```
+
+The `SubscribeAsync<T>` method in `IMessageClient` and `RabbitMQAdapter` was changed to accept `Func<T, Task>` instead of `Action<T>`, allowing asynchronous message processing to be awaited.
+
+The subscription in `MessageHandlerSubscriptionManager` was updated to:
+```csharp
+await _messageClient.SubscribeAsync<TMessage>(
+    subscription,
+    message => HandleMessageAsync(message, ct),
+    ct);
+```
+
+The test helpers `FakeMessageClient.cs` and `MessageCapture.cs` were also updated to support asynchronous handlers.
+
+With this change, exceptions from message handlers can propagate to EasyNetQ, which can handle failed messages instead of acknowledging them before processing has completed.
+
+**Testing:**  
+A processing failure was simulated by temporarily adding an exception at the beginning of `MessagePostedHandler.HandleAsync()`:
+```csharp
+throw new InvalidOperationException("Simulated message processing failure");
+```
+
+The integration test `MessagePostedIntegrationTests` was then executed, publishing a `MessagePostedEvent` and waiting for an `ActivityProcessedEvent`.
+
+The test timed out because message processing failed before the result event could be published. RabbitMQ showed that the original message queue was empty and that the failed message had been moved to `EasyNetQ_Default_Error_Queue`.
+
+The error queue contained the original `MessagePostedEvent` and the exception details, including the stack trace through `MessagePostedHandler`, `MessageHandlerSubscriptionManager`, and EasyNetQ. This confirmed that the exception was detected and the failed message was preserved instead of silently discarded.
+
+After testing, the simulated exception was removed to restore normal message processing.
+
+The test demonstrates that failed messages are preserved in EasyNetQ's error queue when a handler throws an exception. However, failed messages are not automatically retried and require manual recovery.
+
+#### Service crashes or becomes unavailable: Other services or clients cannot access channel functionality
+**Resiliency patterns:**
+Health monitoring and automatic restart. Docker periodically checks the application's health endpoint and automatically restarts the container when its main process exits.
+
+**Implementation:**
+If ChannelService crashes or becomes unavailable, other services and clients cannot access channel functionality until the service is running again. To detect service availability and recover from application crashes, an ASP.NET Core health endpoint and Docker health check are introduced, together with an automatic restart policy.
+
+Previously, ChannelService had no dedicated health endpoint or Docker health check, and no explicit restart policy.
+
+In `Program.cs`, health checks are registered and exposed through `/health`:
+```csharp
+builder.Services.AddHealthChecks();
+```
+```csharp
+app.MapHealthChecks("/health");
+```
+
+In `docker-compose.yml`, Docker periodically checks the endpoint and automatically restarts the container if its main process exits:
+```yaml
+restart: unless-stopped
+healthcheck:
+  test: ["CMD-SHELL", "curl -fsS http://localhost:80/health || exit 1"]
+  interval: 10s
+  timeout: 3s
+  retries: 3
+  start_period: 15s
+```
+
+The Dockerfile was also updated to install `curl` in the runtime image, allowing Docker to execute the health check.
+
+**Testing:**  
+Two scenarios were tested:
+1. **Health monitoring:** The `/health` endpoint was requested using `curl -i http://localhost:8100/health`. It returned HTTP 200 with `Healthy`, and Docker reported the container as `healthy`.
+2. **Automatic restart:** The application's main process was terminated using `docker compose exec channel-service sh -c 'kill -TERM 1'`. Docker automatically restarted the container, increasing `RestartCount` from 0 to 1. The container subsequently returned to `healthy`, and `/health` again responded with HTTP 200.
+
+The tests confirmed that Docker can detect whether ChannelService is responding and automatically restart it after its main process exits.
+
+However, health checks alone do not trigger automatic restarts, and successful recovery depends on the application's startup dependencies. During an earlier test, Docker restarted ChannelService, but an expired Vault token prevented the application from starting successfully.
+
+## Security
+All ChannelService HTTP endpoints are intended for authenticated users and are protected through JWT authentication and scope-based authorization at the API Gateway. Any communication between microservices is handled asynchronously through RabbitMQ, where MessagePostedHandler processes incoming events without exposing an HTTP endpoint. Therefore, no additional gateway routes for internal service-to-service communication have been introduced.
+
+## Saga Workflow Scenario
+A user gets banned mid-conversation: A moderator bans a user who is currently active in several channels and an ongoing voice call.
+
+### Overview
+
+#### User Management
+- Transaction: Mark user as banned and invalidate all active sessions
+- Compensation: Unban user and restore session access if channel membership removal fails
+- Limitation: Invalidated sessions may not be recoverable, meaning the user must log in again
+
+#### Channel
+- Transaction: Forcibly remove user from each channel they are in and post a system message that the user was removed
+- Compensation: Restore previously removed channel memberships and roles, and delete associated system messages if a subsequent channel removal fails
+- Limitation: System messages may already have been delivered or seen by other users and cannot be fully retracted
+
+#### Streaming / VoIP
+- Transaction: Terminate any active voice or video sessions immediately
+- Compensation: None (streaming termination failures do not reverse the ban)
+- Limitation: Terminated calls cannot be restored
+
+#### The Hard Question
+If the ban succeeds but voice termination fails, the user remains banned, but the saga is not fully completed. Voice termination should be retried rather than compensating the ban or channel removals. If retries continue to fail, the failure should be logged and an administrator alerted for manual intervention.
+
+### Design
+**Step 1: Ban user**
+- Started by: BanUser
+- Success: BanSucceeded
+- Failure: BanFailed (saga ends, nothing to compensate)
+- Compensation: UnbanUser (triggered if step 2 fails)
+
+**Step 2: Remove user's channel memberships**
+- Started by: BanSucceeded
+- Success: MembershipRemovalSucceeded
+- Failure: MembershipRemovalFailed (must compensate step 1)
+- Compensation: RestoreMemberships (restores previously removed memberships and roles, and requests deletion of corresponding system messages)
+- Compensation failure: If membership restoration fails, the failure is logged and requires manual intervention rather than publishing MembershipRemovalFailed
+
+If an individual membership removal fails, ChannelService compensates previously completed removals before publishing MembershipRemovalFailed.
+
+System messages are handled asynchronously by MessageService. Failures to create or delete system messages do not affect the Saga outcome.
+
+**Step 3: Terminate streaming**
+- Started by: MembershipRemovalSucceeded
+- Success: StreamingTerminationSucceeded (saga completes)
+- Failure: StreamingTerminationFailed (retry termination, escalate if retries fail)
+- Compensation: None (termination cannot be undone)
+
+A streaming termination failure won't trigger compensation of the ban or channel membership removals.
+
+#### Rollback and Compensation
+- Local rollback: EF Core rolls back any uncommitted database changes if an individual channel membership removal fails
+- Saga compensation: If step 2 partially fails, ChannelService restores previously committed membership removals with `RestoreMemberships` and requests deletion of the corresponding system messages. Only after membership restoration succeeds is `MembershipRemovalFailed` published, triggering `UnbanUser` in User Management
+- Limitation: Deleting system messages cannot undo information already seen by other users
+
+#### Chosen Approach
+I chose choreography because it aligns well with the existing implementation and use of RabbitMQ for communication between microservices. The chosen scenario follows a relatively simple and linear workflow, with limited coordination requirements. While orchestration could be beneficial for a more complex Saga with additional steps and dependencies, it would require introducing a central component to coordinate the workflow, adding unnecessary complexity and an additional dependency in this case.
+
+The Saga state is stored locally in each participating service’s database, allowing each service to track its own progress and handle compensation independently. In ChannelService, the state tracks membership removal and compensation, while preserving the original memberships so they can be restored if a failure occurs.
 
 ## Running the Project with Docker
 > Note: The following commands should be run from the repository root.
